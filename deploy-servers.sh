@@ -26,13 +26,13 @@ prepareServer() {
         /etc/ssh/sshd_config"
     remoteCmd $1 "sudo sed -i \
         's|^GRUB_TIMEOUT=.*|GRUB_TIMEOUT=-1|' /etc/default/grub"
+    remoteCmd $1 "sudo apt-get update"
 }
 
 installRouter() {
-    remoteCmd $1 "sudo apt-get update"
-    remoteCmd $1 "sudo sysctl -w net.ipv4.ip_forward=1"
     remoteCmd $1 "[[ -f .ssh/id_rsa ]] || ssh-keygen -f .ssh/id_rsa \
         -t rsa -N ''"
+    remoteCmd $1 "echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf"
     remoteCmd $1 "sudo apt install -y isc-dhcp-server nginx"
     remoteCmd $1 "sudo systemctl disable lightdm"
     for file in ${SCRIPT_NAME} dhcpd.conf iptables.sh nginx.conf hosts; do
