@@ -33,9 +33,9 @@ installRouter() {
     remoteCmd $1 "[[ -f .ssh/id_rsa ]] || ssh-keygen -f .ssh/id_rsa \
         -t rsa -N ''"
     remoteCmd $1 "echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf"
-    remoteCmd $1 "sudo apt install -y isc-dhcp-server nginx"
+    remoteCmd $1 "sudo apt install -y isc-dhcp-server nginx nfs-kernel-server"
     remoteCmd $1 "sudo systemctl disable lightdm"
-    for file in ${SCRIPT_NAME} dhcpd.conf iptables.sh nginx.conf hosts; do
+    for file in ${SCRIPT_NAME} dhcpd.conf iptables.sh nginx.conf hosts exports; do
         scp ${file} k8s@$1:
     done
     remoteCmd $1 "grep ${MASTER_NODE} /etc/hosts || \
@@ -45,6 +45,8 @@ installRouter() {
     remoteCmd $1 "echo '@reboot root /etc/iptables.sh' | sudo tee -a /etc/crontab"
     remoteCmd $1 "sudo mv dhcpd.conf /etc/dhcp/; \
         sudo service isc-dhcp-server restart"
+    remoteCmd $1 "sudo mv exports /etc/ sudo systemctl start \
+        nfs-kernel-server.service; sudo service nfs-kernel-server restart"
     echo "$0 finished, rebooting..."
     remoteCmd $1 "sudo reboot"
 }
