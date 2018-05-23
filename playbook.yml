@@ -1,0 +1,123 @@
+- hosts: router
+  become: yes
+  tasks:
+  - sysctl:
+      name: net.ipv4.ip_forward
+      value: 1
+      sysctl_set: yes
+  - apt: name={{ item }} update_cache=yes
+    with_items:
+    - dnsmasq
+    - nginx
+  - copy:
+      src: "./nginx.conf"
+      dest: /etc/nginx/
+      mode: 0644
+  - copy: src='./dhcp-dns.conf' dest='/etc/dnsmasq.d/'
+  - lineinfile:
+      path: /etc/resolv.conf
+      line: 'nameserver 127.0.0.1'
+      insertbefore: '^nameserver'
+  - service: name=dnsmasq state=restarted
+  - copy:
+      src: "./iptables.sh"
+      dest: /etc/init.d/
+      owner: root
+      group: root
+      mode: 0755
+  - cron:
+      name: iptables
+      special_time: reboot
+      cron_file: iptables
+      user: root
+      job: /etc/iptables.sh
+  - command: /etc/iptables.sh
+- hosts: all
+  become: yes
+  tasks:
+  - lineinfile:
+      path: /etc/sudoers
+      regexp: '^%sudo'
+      line: '%sudo ALL=(ALL) NOPASSWD: ALL'
+  - lineinfile:
+      path: /etc/default/grub
+      regexp: '^GRUB_TIMEOUT='
+      line: 'GRUB_TIMEOUT=-1'
+  - lineinfile:
+      path: /etc/ssh/sshd_config
+      regexp: 'UseDNS'
+      line: 'UseDNS no'
+  - authorized_key:
+      user: k8s
+      key: https://github.com/jamesmacfarlane.keys
+- hosts: k8s-all
+  become: yes
+  tasks:
+  - apt: name=gpg update_cache=yes
+  - sysctl:
+      name: vm.swappiness
+      value: 0
+  - lineinfile:
+      dest: /etc/fstab
+      regexp: '^/[\S]+\s+none\s+swap '
+      state: absent
+  - command: swapoff --all
+  # install k8s
+  - apt_key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+  - apt_repository:
+      repo: deb http://apt.kubernetes.io kubernetes-xenial main
+  - apt: name={{ item }} update_cache=yes
+    with_items:
+    - docker.io
+    - kubelet
+    - kubeadm
+    - kubernetes-cni
+  - service: name=docker enabled=yes
+- hosts: k8s-master
+  become: yes
+  tasks:
+  - shell: |
+      kubeadm init --apiserver-cert-extra-sans twr \
+        --pod-network-cidr={{ cni_cidr }} \
+        --token {{ kubeadm_token }}
+      name: init master node
+  - file: path='~/.kube/' state=directory
+    become: false
+    name: create ~/.kube/
+  - file: path=/etc/kubernetes/admin.conf mode=0775
+    name: chmod kubeconfig
+  - copy:
+      src: /etc/kubernetes/admin.conf
+      dest: '~/.kube/config'
+      owner: '{{ ansible_ssh_user }}'
+      group: '{{ ansible_ssh_user }}'
+      mode: 0755
+      remote_src: True
+    become: false
+    name: copy kubeconfig file to user dir
+  - systemd:
+      name: kubelet
+      daemon_reload: yes
+      state: restarted
+      enabled: yes
+    name: restart kubelet
+  - command: kubectl apply -f {{ flannel_deploy }}
+    become: false
+    name: deploy flannel to k8s cluster
+  - command: kubectl apply -f {{ flannel_rbac }}
+    become: false
+    name: configure rbac for flannel deployment
+  - command: kubectl taint nodes --all node-role.kubernetes.io/master-
+    become: false
+    name: taint master node
+- hosts: k8s-workers
+  become: yes
+  tasks:
+  - name: join to master node
+    shell: |
+      kubeadm join --token {{ kubeadm_token }} \
+        {{ groups['k8s-master'][0] }}:6443 \
+        --ignore-preflight-errors=all \
+        --discovery-token-unsafe-skip-ca-verification
+
