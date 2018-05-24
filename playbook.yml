@@ -120,4 +120,13 @@
         {{ groups['k8s-master'][0] }}:6443 \
         --ignore-preflight-errors=all \
         --discovery-token-unsafe-skip-ca-verification
-
+- hosts: k8s-master
+  become: yes
+  tasks:
+  - name: copy volume provisioner configuration
+    copy:
+      src: './local-volume-provisioner.yml'
+      dest: '/tmp/'
+      mode: 0644
+  - name: apply local volume provisioner
+    command: kubectl apply -f /tmp/local-volume-provisioner.yml
