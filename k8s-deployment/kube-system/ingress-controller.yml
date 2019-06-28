@@ -1,50 +1,4 @@
 ---
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1beta1
-metadata:
-  name: ingress-controller
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-      - services
-      - endpoints
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-    resources:
-      - ingresses
-    verbs:
-      - get
-      - list
-      - watch
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1beta1
-metadata:
-  name: ingress-controller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: ingress-controller
-subjects:
-- kind: ServiceAccount
-  name: ingress-controller
-  namespace: kube-system
-
----
-kind: ServiceAccount
-apiVersion: v1
-metadata:
-  name: ingress-controller
-
----
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -53,7 +7,8 @@ data:
   traefik.toml: |
     logLevel = "INFO"
 
-    defaultEntryPoints = ["http"]
+    defaultEntryPoints = ["http","https"]
+    insecureSkipVerify = true
 
     [api]
 
@@ -63,6 +18,9 @@ data:
     [entryPoints]
       [entryPoints.http]
       address = ":80"
+      [entryPoints.https]
+      address = ":443"
+        [entryPoints.https.tls]
 
     [metrics]
       [metrics.prometheus]
